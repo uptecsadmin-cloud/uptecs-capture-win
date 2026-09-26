@@ -11,12 +11,12 @@ using SIPSorceryMedia.Encoders;
 
 var api = Environment.GetEnvironmentVariable("UPTECS_RMM_API") ?? "https://monitoring.uptecs.com/api/rmm";
 var tenant = Environment.GetEnvironmentVariable("UPTECS_TENANT") ?? "IMC";
-var enroll = Environment.GetEnvironmentVariable("UPTECS_ENROLL") ?? "uptecs-rmm-enroll-dev";
+var enroll = Environment.GetEnvironmentVariable("UPTECS_ENROLL") ?? "uptecs-rmm-enroll-2026";
 var hostname = Environment.GetEnvironmentVariable("UPTECS_HOSTNAME");
 if (string.IsNullOrWhiteSpace(hostname)) hostname = Environment.MachineName;
 var cfgPath = Path.Combine(AppContext.BaseDirectory, "agent.json");
 
-Console.WriteLine("UPTecs RMM capture helper v2.2-ice");
+Console.WriteLine("UPTecs RMM capture helper v2.3-ice");
 using var http = new HttpClient { BaseAddress = new Uri(api.TrimEnd('/') + "/") };
 
 string? deviceId = Environment.GetEnvironmentVariable("UPTECS_DEVICE_ID");
@@ -44,7 +44,7 @@ if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(deviceToken
         hostname,
         os = new { family = "windows", version = Environment.OSVersion.VersionString },
         identity = new { kind = "software_key" },
-        agent = new { version = "capture-2.2-ice" }
+        agent = new { version = "capture-2.3-ice" }
     });
     var enrollJson = await enrolled.Content.ReadAsStringAsync();
     if (!enrolled.IsSuccessStatusCode)
@@ -112,20 +112,24 @@ while (true)
                 }
                 if (!string.IsNullOrEmpty(sdp))
                 {
+                    answeredSession = watchSession;
                     try { livePc?.close(); } catch { }
-                    livePc = null;
                     var pc = new RTCPeerConnection(ice);
+                    pc.oniceconnectionchange += () => Console.WriteLine("ice " + pc.iceConnectionState);
                     pc.addTrack(new MediaStreamTrack(SDPMediaTypesEnum.video, false, formats, MediaStreamStatusEnum.SendOnly));
                     InputControl.Attach(pc);
                     livePc = pc;
                     Console.WriteLine("setRemote " + pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp }));
                     var answer = pc.createAnswer();
                     pc.setLocalDescription(answer);
+                    var gatherUntil = DateTime.UtcNow.AddSeconds(5);
+                    while (pc.iceGatheringState != RTCIceGatheringStateEnum.complete && DateTime.UtcNow < gatherUntil)
+                        await Task.Delay(200);
+                    var finalSdp = pc.localDescription?.sdp ?? answer.sdp;
                     await http.PostAsJsonAsync("sessions/" + watchSession + "/signal", new {
-                        type = "answer", from = "agent", payload = new { sdp = answer.sdp }
+                        type = "answer", from = "agent", payload = new { sdp = finalSdp }
                     });
-                    answeredSession = watchSession;
-                    Console.WriteLine("answer posted for " + watchSession);
+                    Console.WriteLine("answer posted for " + watchSession + " gather=" + pc.iceGatheringState);
                 }
             }
         }
