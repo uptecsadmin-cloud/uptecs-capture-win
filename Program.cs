@@ -123,15 +123,8 @@ while (true)
                     pc.setLocalDescription(answer);
                     Console.WriteLine("gathering ICE 4.5s");
                     await Task.Delay(4500);
-                    var finalSdp = answer.sdp;
-                    try
-                    {
-                        var loc = pc.localDescription;
-                        if (loc != null && loc.sdp != null && loc.sdp.Length > 0) finalSdp = loc.sdp;
-                    }
-                    catch { }
                     await http.PostAsJsonAsync("sessions/" + watchSession + "/signal", new {
-                        type = "answer", from = "agent", payload = new { sdp = finalSdp }
+                        type = "answer", from = "agent", payload = new { sdp = answer.sdp }
                     });
                     Console.WriteLine("answer posted for " + watchSession);
                 }
