@@ -16,7 +16,7 @@ var hostname = Environment.GetEnvironmentVariable("UPTECS_HOSTNAME");
 if (string.IsNullOrWhiteSpace(hostname)) hostname = Environment.MachineName;
 var cfgPath = Path.Combine(AppContext.BaseDirectory, "agent.json");
 
-Console.WriteLine("UPTecs RMM capture helper v2.4-ice");
+Console.WriteLine("UPTecs RMM capture helper v2.5-ice");
 using var http = new HttpClient { BaseAddress = new Uri(api.TrimEnd('/') + "/") };
 
 string? deviceId = Environment.GetEnvironmentVariable("UPTECS_DEVICE_ID");
@@ -44,7 +44,7 @@ if (string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(deviceToken
         hostname,
         os = new { family = "windows", version = Environment.OSVersion.VersionString },
         identity = new { kind = "software_key" },
-        agent = new { version = "capture-2.4-ice" }
+        agent = new { version = "capture-2.5-ice" }
     });
     var enrollJson = await enrolled.Content.ReadAsStringAsync();
     if (!enrolled.IsSuccessStatusCode)
@@ -64,9 +64,10 @@ http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer
 
 var ice = new RTCConfiguration
 {
+    iceTransportPolicy = RTCIceTransportPolicy.relay,
+    X_ICEIncludeAllInterfaceAddresses = true,
     iceServers = new List<RTCIceServer>
     {
-        new RTCIceServer { urls = "stun:stun.l.google.com:19302" },
         new RTCIceServer { urls = "turn:rmm.uptecs.com:3478?transport=udp", username = "uptecs", credential = "Turn-7kQ2mN9pX4" },
         new RTCIceServer { urls = "turn:rmm.uptecs.com:3478?transport=tcp", username = "uptecs", credential = "Turn-7kQ2mN9pX4" },
         new RTCIceServer { urls = "turns:rmm.uptecs.com:443?transport=tcp", username = "uptecs", credential = "Turn-7kQ2mN9pX4" }
@@ -122,8 +123,8 @@ while (true)
                     Console.WriteLine("setRemote " + pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp }));
                     var answer = pc.createAnswer();
                     pc.setLocalDescription(answer);
-                    Console.WriteLine("gathering ICE 5s");
-                    await Task.Delay(5000);
+                    Console.WriteLine("gathering TURN 6s");
+                    await Task.Delay(6000);
                     string finalSdp = answer.sdp;
                     try
                     {
@@ -132,8 +133,9 @@ while (true)
                             finalSdp = loc.sdp.ToString();
                     }
                     catch (Exception ex) { Console.WriteLine("sdp read " + ex.Message); }
+                    var hasRelay = finalSdp != null && finalSdp.Contains("typ relay");
                     var hasCand = finalSdp != null && finalSdp.Contains("a=candidate");
-                    Console.WriteLine("sdp-len " + (finalSdp == null ? 0 : finalSdp.Length) + " candidates=" + hasCand);
+                    Console.WriteLine("sdp-len " + (finalSdp == null ? 0 : finalSdp.Length) + " candidates=" + hasCand + " relay=" + hasRelay);
                     await http.PostAsJsonAsync("sessions/" + watchSession + "/signal", new {
                         type = "answer", from = "agent", payload = new { sdp = finalSdp }
                     });
