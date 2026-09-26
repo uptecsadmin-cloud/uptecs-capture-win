@@ -115,21 +115,25 @@ while (true)
                     answeredSession = watchSession;
                     try { livePc?.close(); } catch { }
                     var pc = new RTCPeerConnection(ice);
-                    pc.oniceconnectionchange += () => Console.WriteLine("ice " + pc.iceConnectionState);
                     pc.addTrack(new MediaStreamTrack(SDPMediaTypesEnum.video, false, formats, MediaStreamStatusEnum.SendOnly));
                     InputControl.Attach(pc);
                     livePc = pc;
                     Console.WriteLine("setRemote " + pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp }));
                     var answer = pc.createAnswer();
                     pc.setLocalDescription(answer);
-                    var gatherUntil = DateTime.UtcNow.AddSeconds(5);
-                    while (pc.iceGatheringState != RTCIceGatheringStateEnum.complete && DateTime.UtcNow < gatherUntil)
-                        await Task.Delay(200);
-                    var finalSdp = pc.localDescription?.sdp ?? answer.sdp;
+                    Console.WriteLine("gathering ICE 4.5s");
+                    await Task.Delay(4500);
+                    var finalSdp = answer.sdp;
+                    try
+                    {
+                        var loc = pc.localDescription;
+                        if (loc != null && loc.sdp != null && loc.sdp.Length > 0) finalSdp = loc.sdp;
+                    }
+                    catch { }
                     await http.PostAsJsonAsync("sessions/" + watchSession + "/signal", new {
                         type = "answer", from = "agent", payload = new { sdp = finalSdp }
                     });
-                    Console.WriteLine("answer posted for " + watchSession + " gather=" + pc.iceGatheringState);
+                    Console.WriteLine("answer posted for " + watchSession);
                 }
             }
         }
